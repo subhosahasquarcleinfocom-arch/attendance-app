@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIOMETRIC WEB PUNCH</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white font-sans min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-slate-800 rounded-2xl shadow-2xl p-6 border border-slate-700">
+        <h2 class="text-center text-xl font-bold tracking-wider text-sky-400 mb-4">WEB ATTENDANCE SYSTEM</h2>
+        
+        <div class="bg-slate-950 rounded-xl p-3 text-center mb-4 border border-slate-800">
+            <div id="clock" class="text-2xl font-bold text-emerald-400">00:00:00 AM</div>
+            <div id="date" class="text-xs text-slate-400 mt-1">Loading Date...</div>
+        </div>
+
+        <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden mb-4 border-2 border-slate-600">
+            <video id="video" autoplay playsinline class="w-full h-full object-cover"></video>
+            <canvas id="canvas" class="hidden"></canvas>
+            <div id="loc-display" class="absolute bottom-2 left-2 bg-black/70 px-2 py-1 rounded text-xxs text-slate-300">📍 Fetching Location...</div>
+        </div>
+
+        <div id="status-box" class="bg-slate-900 text-center py-2 rounded-lg text-sm font-semibold mb-4 text-yellow-500 border border-slate-800">
+            SYSTEM READY
+        </div>
+
+        <div class="flex flex-col gap-3">
+            <button onclick="processPunch('PUNCH IN')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all active:scale-95 shadow-lg">PUNCH IN</button>
+            <button onclick="processPunch('PUNCH OUT')" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 rounded-xl transition-all active:scale-95 shadow-lg">PUNCH OUT</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const statusBox = document.getElementById('status-box');
+        let currentLocation = "Live Location";
+
+        // Clock Ticker
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toLocaleTimeString();
+            document.getElementById('date').innerText = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        }, 1000);
+
+        // Start Mobile/PC Camera
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+            .then(stream => { video.srcObject = stream; })
+            .catch(err => { 
+                statusBox.innerText = "Camera Access Denied!";
+                statusBox.className = "bg-slate-900 text-center py-2 rounded-lg text-sm font-semibold mb-4 text-red-500 border border-slate-800";
+            });
+
+        // Get Location via Browser
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                currentLocation = `Lat: ${pos.coords.latitude.toFixed(2)}, Lon: ${pos.coords.longitude.toFixed(2)}`;
+                document.getElementById('loc-display').innerText = `📍 ${currentLocation}`;
+            },
+            () => { document.getElementById('loc-display').innerText = "📍 Kolkata, West Bengal"; currentLocation = "Kolkata, WB"; }
+        );
+
+        // Core Punch Function
+        function processPunch(type) {
+            statusBox.innerText = "SCANNING MUKH...";
+            statusBox.style.color = "#f59e0b";
+
+            // Capture frame from video
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            // Send data to Flask Server
+            fetch('/punch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: type, location: currentLocation, image: imageData })
+            })
+            .then(res => res.json())
+            .then(data => {
+                statusBox.innerText = data.message.toUpperCase();
+                if(data.status === 'success') {
+                    statusBox.style.color = "#22c55e";
+                } else {
+                    statusBox.style.color = "#ef4444";
+                }
+            })
+            .catch(() => {
+                statusBox.innerText = "SERVER CONNECTION ERROR";
+                statusBox.style.color = "#ef4444";
+            });
+        }
+    </script>
+</body>
+</html>
